@@ -1,7 +1,7 @@
 # phenoSpline
 Smooths phenological time series iteratively using a bayesian information criterion (BIC) to determine optimal smoothing parameters and curve
 
-The following are a series of functions adapted from Koen Hufken's phenocamR repository [https://github.com/khufkens/phenocamr] to integrate with PhenoCam's new API access.  This series of scripts avoids download of any data onto your computer, maintaning all analyses in the RStudio space via API.  
+The following are a series of functions adapted from [Koen Hufken's phenocamR repository] (https://github.com/khufkens/phenocamr) to integrate with PhenoCam's new API access.  This series of scripts avoids download of any data onto your computer, maintaning all analyses in the RStudio space via API.  
 
 This series of scripts will be further adapted to process remotely sensed vegetation indicies from AppEEARS.
 
