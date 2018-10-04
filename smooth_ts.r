@@ -45,25 +45,19 @@ smooth_ts = function(data,
                                  "rcc_75",
                                  "rcc_90"),
                      force = TRUE, frequency) {
-  
+
   
   
   # split out data from read in or provided data
-  df = data$data
-  
-  # if it's a smoothed file, bail unless you want to
-  # force the smoothing again
-  if (any(grepl("smooth_*", colnames(df))) & force == FALSE) {
-    stop("data is already smoothed")
-  }
-  
+  df = data
+
   # maximum allowed gap before the whole stretch is
   # flagged as too long to be reliably interpolated
   maxgap = 14
-  
+
   # create convenient date vector
   # (static for all data)
-  dates = df$date
+  dates = as.Date(df$date)
   
   # create output matrix
   output = matrix(NA, length(dates), length(metrics) * 2 + 1)
@@ -72,29 +66,30 @@ smooth_ts = function(data,
                    sprintf("smooth_ci_%s", metrics),
                    "int_flag")
   colnames(output) = column_names
-  
+
   # loop over all metrics that need smoothing
   for (i in metrics) {
-    
+
     # get the values to use for smoothing
-    values = df[, which(colnames(df) == i)]
-    
+    v=is.element(colnames(df), i)
+    values = df[, ..v]
+
     # flag all outliers as NA
     # if the metric is gcc based
     if (grepl("gcc", i)) {
       outliers = df[, which(colnames(df) == sprintf("outlierflag_%s", i))]
       values[outliers == 1] = NA
     }
-    
+
     # create yearly mean values and fill in time series
     # with those, keep track of which values are filled
     # using the int_flag data
     nr_years = length(unique(df$year))
-    
+
     # find the location of the original NA values
     # to use to fill these gaps later
     na_orig = which(is.na(values))
-    
+
     # na locations (default locations for 3-day product)
     # this to prevent inflation of the number of true
     # values in the 3-day product
@@ -123,7 +118,7 @@ smooth_ts = function(data,
     if (nr_years >= 2) {
       
       # used to be 3, fill values using those of the remaining year
-      
+
       # calculate the mean values for locations
       # where there are no values across years
       fill_values = by(values,INDICES = df$doy, mean, na.rm = TRUE)
@@ -134,14 +129,14 @@ smooth_ts = function(data,
       # calculate the interpolated data based on
       # the whole dataset
       int_data = unlist(lapply(doy_na,
-                               function(x,...) {
-                                 fv = fill_values[which(doy_fill_values == x)]
-                                 if (length(fv) == 0) {
-                                   return(NA)
-                                 }else{
-                                   return(fv)
-                                 }
-                               }))
+                    function(x,...) {
+                      fv = fill_values[which(doy_fill_values == x)]
+                      if (length(fv) == 0) {
+                        return(NA)
+                      }else{
+                        return(fv)
+                      }
+                    }))
       
       # gap fill the original dataset using
       # the interpolated values
@@ -153,10 +148,10 @@ smooth_ts = function(data,
       # only long NA periods merit using priors
       gap_filled_prior[short_na] = NA
       gap_filled_linear = zoo::na.approx(gap_filled_prior, na.rm = FALSE)
-      
+
       # the above value should be independent of the ones used in the carry
       # forward / backward exercise
-      
+
       # traps values stuck at the end in NA mode, use carry
       # forward and backward to fill these in! These errors
       # don't pop up when using a fitting model (see above)
@@ -165,45 +160,45 @@ smooth_ts = function(data,
       gap_filled_backward = zoo::na.locf(gap_filled_linear,
                                          na.rm = FALSE,
                                          fromLast = TRUE)
-      
+
       # drop in values at remaining NA places
       gap_filled_forward[is.na(gap_filled_forward)] = gap_filled_backward[is.na(gap_filled_forward)]
       gap_filled_backward[is.na(gap_filled_backward)] = gap_filled_forward[is.na(gap_filled_backward)]
-      
+
       # take the mean of the carry forward and backward run
       # this should counter some high or low biases by using the
       # average of last or first value before or after an NA stretch
       gap_filled_linear = ( gap_filled_forward + gap_filled_backward ) / 2
       gap_filled = apply(cbind(gap_filled_prior,gap_filled_linear),1,max,na.rm=TRUE)
-      
+
     }else{
-      
+
       # for short series, where averaging over years isn't possible
       # linearly interpolate the data for gap filling
       # it's not ideal (no priors) but the best you have
       gap_filled = zoo::na.approx(values, na.rm = FALSE)
-      
+
       # traps values stuck at the end in NA mode, use carry
       # forward and backward to fill these in! These errors
       # don't pop up when using a fitting model (see above)
       gap_filled = zoo::na.locf(gap_filled, na.rm = FALSE)
       gap_filled = zoo::na.locf(gap_filled, na.rm = FALSE, fromLast = TRUE)
     }
-    
+
     # the gap_filled object is used in the subsequent analysis
     # to calculate the ideal fit, down weighing those areas
     # which were interpolated
-    
+
     # create weight vector for original NA
     # values and snow flag data
-    weights = rep(1,length(values))
+    weights = rep(1,nrow(values))
     weights[na_orig] = 0.001
     #weights[df$snow_flag == 1] = 0.001
     
     # smooth input series for plotting
     # set locations to NA which would otherwise not exist in the
     # 3-day product, as not to inflate the number of measurements
-    if (frequency == "3day"){
+    if (frequency == 3){
       
       optim_span = suppressWarnings(
         optimal_span(x = as.numeric(dates[loc]),
@@ -211,44 +206,44 @@ smooth_ts = function(data,
                      plot = FALSE))
       
       fit = suppressWarnings(
-        stats::loess(gap_filled[loc] ~ as.numeric(dates[loc]),
-                     span = optim_span,
-                     weights = weights[loc]))
-      
+              stats::loess(gap_filled[loc] ~ as.numeric(dates[loc]),
+                           span = optim_span,
+                           weights = weights[loc]))
+
     } else { # 1-day product
-      
+
       optim_span = suppressWarnings(
-        optimal_span(x = as.numeric(dates),
-                     y = gap_filled,
-                     plot = FALSE))
-      
+                      optimal_span(x = as.numeric(dates),
+                                   y = gap_filled,
+                                   plot = FALSE))
+
       fit = suppressWarnings(
-        stats::loess(gap_filled ~ as.numeric(dates),
-                     span = optim_span,
-                     weights = weights))
-      
+              stats::loess(gap_filled ~ as.numeric(dates),
+                           span = optim_span,
+                           weights = weights))
+
     }
-    
+
     # make projections based upon the optimal fit
     fit = suppressWarnings(stats::predict(fit, as.numeric(dates), se = TRUE))
-    
+
     # grab the smoothed series and the CI (from SE)
     # set to 0 if no SE is provided
     values_smooth = fit$fit
-    
+
     # calculate the CI (from SE)
     values_ci = 1.96 * fit$se
-    
+
     # cap CI values to 0.02
     values_ci[values_ci > 0.02] = 0.02
-    
+
     # trap trailing and starting NA values
     values_smooth = zoo::na.locf(values_smooth,
                                  na.rm=FALSE)
     values_smooth = zoo::na.locf(values_smooth,
                                  fromLast = TRUE,
                                  na.rm=FALSE)
-    
+
     # set values for long interpolated values to 0
     # these are effectively missing or inaccurate
     # (consider setting those to NA, although this
@@ -266,32 +261,28 @@ smooth_ts = function(data,
     # you only lack some data
     # this is redundant should only do this once (fix)
     int = zoo::na.approx(values, maxgap = maxgap, na.rm = FALSE)
-    
+
     # put everything in the output matrix
     output$int_flag[which(is.na(int))] = 1
     output[, which(colnames(output) == sprintf("smooth_%s", i))] = round(values_smooth,5)
     output[, which(colnames(output) == sprintf("smooth_ci_%s", i))] = round(values_ci,5)
-    
+
     cols = rep("red",length(gap_filled))
     cols[long_na] = "green"
   }
-  
+
   # drop previously smoothed data from
   # a data frame
-  dropvar = names(df) %in% column_names
-  df = df[!dropvar]
+  # dropvar = is.element(names(df), column_names)  #maybe break here
+  # df = df[,!dropvar]
   df = cbind(df, output)
-  
+
   # put data back into the data structure
-  data$data = df
+  data= df
   
   # write the data to the original data frame or the
   # original file (overwrites the data!!!)
-  if(on_disk | !internal ){
-    write_phenocam(data, out_dir = out_dir)
-  } else {
-    # if provided a data frame
-    # return the original data frame, with flagged outliers
-    return(data)
-  }
+ 
+    return(data) #data, 
+
 }
