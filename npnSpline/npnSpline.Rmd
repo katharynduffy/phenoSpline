@@ -1,0 +1,62 @@
+---
+title: "npnSpline"
+author: "K. Duffy"
+date: "October 18, 2018"
+output: html_document
+---
+
+Start my loading some npn data, we had to do a backdoor of this so I won't include code here
+
+Filter the data to just grab 'leaves' data
+
+```{r}
+leaves_idx=is.element(status_intensity_observation_data$Phenophase_Description, 'Leaves')
+leaves=status_intensity_observation_data[leaves_idx,]
+leaves=leaves%>%filter(Phenophase_Status>0)
+#idx=leaves$Phenophase_Status>0
+```
+
+Aggregate to count data:
+```{r}
+count_data=aggregate.data.frame(x=leaves$Phenophase_Status, by=list(leaves$Observation_Date), FUN=sum)
+```
+
+Plot the data to undertand what we are working with:
+```{r}
+p=ggplot(count_data, aes(x=Group.1, y=x))+
+  geom_point(alpha=.5, color='darkgreen') #this sets the transparency value
+p +theme_bw() #this just cleans up the base grey background from ggplot2
+```
+
+```{r}
+library(stats)
+library(ggthemes)
+library(ggplot2)
+s=smooth.spline(x=count_data) #here is an ultra basic smoothing spline, there are a bunch of additional parameters you can include to trailor the smoothing.  probably easiest to just chat about it
+p=ggplot(count_data, aes(x=Group.1, y=x))+
+  geom_point(alpha=.2, color='darkgreen')+
+  geom_line(aes(x=Group.1, y=s$y), color='darkgreen')
+p+ggthemes::theme_few()
+
+```
+
+A LOESS spline, where you can set a proportion of that data to smooth based on (span below)
+```{r}
+count_data$Group.1=as.numeric(count_data$Group.1) #loess smoothes don't accept date format
+l=loess(x ~ Group.1, data=count_data, span=.3) #, span=0.10
+
+p=ggplot(count_data, aes(x=Group.1, y=x))+
+  geom_point(alpha=.2, color='darkgreen')+
+  geom_line(aes(x=Group.1, y=l$fitted), color='darkgreen')
+p+theme_bw()
+```
+Grab the error associated with the models:
+
+```{r}
+library(Metrics)
+error_spline=rmse(count_data$x, s$y )
+error_spline  
+error_LOESS=rmse(count_data$x, l$fitted )
+error_LOESS
+```
+Basically the error is the same, so really you could pick either!  We can talk more about this soon but I'll end here because I have to jump on a plane :)
